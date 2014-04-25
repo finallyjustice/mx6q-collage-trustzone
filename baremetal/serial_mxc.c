@@ -1,6 +1,31 @@
+/*
+ * (c) 2007 Sascha Hauer <s.hauer@pengutronix.de>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
+ */
+
 #include "config.h"
 
-#define UART_PHYS 0x02020000  // for debug uart1
+#define __REG(x)     (*((volatile u32 *)(x)))
+
+#define UART_PHYS CONFIG_UART_BASE_ADDR
+
+#ifdef CONFIG_SERIAL_MULTI
+#warning "MXC driver does not support MULTI serials."
+#endif
 
 /* Register definitions */
 #define URXD  0x0  /* Receiver Register */
@@ -111,54 +136,82 @@
 #define  UTS_RXFULL	 (1<<3)	 /* RxFIFO full */
 #define  UTS_SOFTRST	 (1<<0)	 /* Software reset */
 
-void uart_init(void)
-{
-	__REG(UART_PHYS + UCR1) = 0x0;
-	__REG(UART_PHYS + UCR2) = 0x0;
-	
-	while (!(__REG(UART_PHYS + UCR2) & UCR2_SRST));
+DECLARE_GLOBAL_DATA_PTR;
 
-	// note: the above really works?? I think we have to wait some cycles
-	volatile int i;
-	for (i=0; i< 10000; i++);
-	
-	__REG(UART_PHYS + UCR3) = 0x0704;
-	__REG(UART_PHYS + UCR4) = 0x8000;
-	__REG(UART_PHYS + UESC) = 0x002b;
-	__REG(UART_PHYS + UTIM) = 0x0;
-	
-	__REG(UART_PHYS + UTS) = 0x0;
-	
-	__REG(UART_PHYS + UFCR) = (4 << 7) | 0x1; /* divide clock by 2 / RxFIFO thresold to 1*/
+void serial_setbrg (void)
+{
+	u32 clk = mxc_get_clock(MXC_UART_CLK);
+
+	if (!gd->baudrate)
+		gd->baudrate = CONFIG_BAUDRATE;
+
+	__REG(UART_PHYS + UFCR) = 4 << 7; /* divide input clock by 2 */
 	__REG(UART_PHYS + UBIR) = 0xf;
-	__REG(UART_PHYS + UBMR) = 0x04c4b400 / (2 * 115200);
-	
-	__REG(UART_PHYS + UCR2) = UCR2_WS | UCR2_IRTS | UCR2_RXEN | UCR2_TXEN | UCR2_SRST;
-	
-	__REG(UART_PHYS + UCR1) = UCR1_UARTEN | UCR1_RRDYEN;
+	__REG(UART_PHYS + UBMR) = clk / (2 * gd->baudrate);
+
 }
 
-char uart_getc (void)
+int serial_getc (void)
 {
 	while (__REG(UART_PHYS + UTS) & UTS_RXEMPTY);
-	return (char)(__REG(UART_PHYS + URXD) & URXD_RX_DATA);
+	return (__REG(UART_PHYS + URXD) & URXD_RX_DATA); /* mask out status from upper word */
 }
 
-void uart_putc(char c)
+void serial_putc (const char c)
 {
 	__REG(UART_PHYS + UTXD) = c;
 
 	/* wait for transmitter to be ready */
-	while (!(__REG(UART_PHYS + UTS) & UTS_TXEMPTY));
+	while(!(__REG(UART_PHYS + UTS) & UTS_TXEMPTY));
 
 	/* If \n, also do \r */
 	if (c == '\n')
-		uart_putc('\r');
+		serial_putc ('\r');
 }
 
-void uart_puts(const char *s)
+/*
+ * Test whether a character is in the RX buffer
+ */
+int serial_tstc (void)
+{
+	/* If receive fifo is empty, return false */
+	if (__REG(UART_PHYS + UTS) & UTS_RXEMPTY)
+		return 0;
+	return 1;
+}
+
+void
+serial_puts (const char *s)
 {
 	while (*s) {
-		uart_putc(*s++);
+		serial_putc (*s++);
 	}
+}
+
+/*
+ * Initialise the serial port with the given baudrate. The settings
+ * are always 8 data bits, no parity, 1 stop bit, no start bits.
+ *
+ */
+int serial_init (void)
+{
+	__REG(UART_PHYS + UCR1) = 0x0;
+	__REG(UART_PHYS + UCR2) = 0x0;
+
+	while (!(__REG(UART_PHYS + UCR2) & UCR2_SRST));
+
+	__REG(UART_PHYS + UCR3) = 0x0704;
+	__REG(UART_PHYS + UCR4) = 0x8000;
+	__REG(UART_PHYS + UESC) = 0x002b;
+	__REG(UART_PHYS + UTIM) = 0x0;
+
+	__REG(UART_PHYS + UTS) = 0x0;
+
+	serial_setbrg();
+
+	__REG(UART_PHYS + UCR2) = UCR2_WS | UCR2_IRTS | UCR2_RXEN | UCR2_TXEN | UCR2_SRST;
+
+	__REG(UART_PHYS + UCR1) = UCR1_UARTEN;
+
+	return 0;
 }

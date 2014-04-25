@@ -48,8 +48,39 @@ void Normal_World()
 	} 
 }
 
+#define IOMUXC_GPR1_OFFSET	0x4
+void cpu_init()
+{
+	int val;
+	unsigned int reg;
+
+	/* Increase the VDDSOC to 1.2V */
+	val = REG_RD(ANATOP_BASE_ADDR, HW_ANADIG_REG_CORE);
+	val &= ~BM_ANADIG_REG_CORE_REG2_TRG;
+	val |= BF_ANADIG_REG_CORE_REG2_TRG(0x14);
+	REG_WR(ANATOP_BASE_ADDR, HW_ANADIG_REG_CORE, val);
+
+	/* Need to power down PCIe */
+	val = REG_RD(IOMUXC_BASE_ADDR, IOMUXC_GPR1_OFFSET);
+	val |= (0x1 << 18);
+	REG_WR(IOMUXC_BASE_ADDR, IOMUXC_GPR1_OFFSET, val);
+
+	REG_WR(SNVS_BASE_ADDR, 0x64, 0x41736166);/*set LPPGDR*/
+	reg = REG_RD(SNVS_BASE_ADDR, 0x4c);
+	reg |= (1 << 3);
+	REG_WR(SNVS_BASE_ADDR, 0x4c, reg);/*clear LPSR*/
+
+	mxc_iomux_v3_init((void *)IOMUXC_BASE_ADDR);
+	/* UART1 TXD */
+	mxc_iomux_v3_setup_pad(MX6Q_PAD_SD3_DAT7__UART1_TXD);
+	/* UART1 RXD */
+	mxc_iomux_v3_setup_pad(MX6Q_PAD_SD3_DAT6__UART1_RXD);
+}
+
 int main()
 {	
+	cpu_init();
+	
 	uart_init();
 	uart_puts("\n\rtest uart init\n\r");
 	
