@@ -1,3 +1,0 @@
-该仓库用于实现imx6的trustzone
-
-1. baremetal用于调试裸机程序，开机加载程序设置好trustzone的向量表，SCR的第一位设置成NS，加载启动正常的u-boot
