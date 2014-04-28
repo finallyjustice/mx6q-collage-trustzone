@@ -2,4 +2,6 @@
 
 1. baremetal用于调试裸机程序，开机加载secure程序，设置各种参数，切换到non-secure状态，加载启动正常的u-boot
 
-2. example-VE参考实现
+2. example-VE参考实现, secure目录下的程序现在已经可以用于 启动uboot
+
+3. test是用于在uboot中运行一个测试程序，用于切换secure和non-secure状态
