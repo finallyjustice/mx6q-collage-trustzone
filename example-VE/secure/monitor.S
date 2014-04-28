@@ -1,4 +1,4 @@
-#define ns_image 0x0090b020
+#define ns_image 0x27800000
 
 .equ Mode_MON,	0x16
 .equ Mode_SVP,	0x13

@@ -31,6 +31,11 @@ int secure_main(void)
 		__REG(csu_reg) = 0x00ff00ff; //0x00330033 for Peripheral access policy
 
 	//(*((void(*)(void))0x0090b020))();
+	char* dest = (char*)0x27800000;
+	char* src  = (char*)0x0090b000;
+	for(i=0; i<160096; i++)
+		*dest++ = *src++;
+	
 	// Install monitor
 	monitorInit();
 	
