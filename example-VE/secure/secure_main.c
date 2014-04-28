@@ -39,7 +39,7 @@ int secure_main(void)
 	// Install monitor
 	monitorInit();
 	
-	for (i = 0; i < 10; i++) {
+	while(1) {
 		led_ctrl(LED_ON);
 		asm volatile ("smc #0\n\t");
 	}
