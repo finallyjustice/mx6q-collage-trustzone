@@ -45,8 +45,11 @@ void Normal_World()
 		led_off();
 		uart_puts("hello from Normal world\n\r");
 		asm volatile ("smc #0\n\t") ; 
+		//(*((void(*)(void))0x27800050))();
 	} 
 }
+
+void (*gouboot)(void) = 0x27800050;
 
 #define IOMUXC_GPR1_OFFSET	0x4
 void cpu_init()
@@ -79,12 +82,22 @@ void cpu_init()
 
 int main()
 {	
+	unsigned int i;
+	char* dest = (char*)0x27800000;
+	char* src  = (char*)0x0090C000;
+	
 	cpu_init();
 	
 	uart_init();
-	uart_puts("\n\rtest uart init\n\r");
+	uart_puts("\n\renter the bare metal program\n\r");
+
+
+	for(i=0; i<160098; i++)
+		*dest++ = *src++;
 	
 	enable_hwfirewall() ; 
+	
+//	gouboot();
  
 	monitorInit(Normal_World) ; 		// to normal World
 	

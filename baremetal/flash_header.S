@@ -8,13 +8,13 @@
 ivt_header :		.word 0x402000D1										
 app_code_jump_vector:	.word _start		/*ROM code last jump and run here*/
 reserv1:		.word 0x0
-dcd_ptr:		.word 0x0		/*0x0 or dcd_hdr*/
+dcd_ptr:		.word dcd_hdr		/*0x0 or dcd_hdr*/
 boot_data_addr:		.word boot_data 
 self_ptr:		.word ivt_header 
 app_code_csf:		.word 0x0		/*HAB data must set when use secure boot*/
 reserv2:		.word 0x0
 boot_data:		.word LOAD_ADR
-image_len:		.word 0x2000
+image_len:		.word 0x2C000
 plugin:			.word 0x0
 
 /* DCD */

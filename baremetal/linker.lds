@@ -4,7 +4,7 @@ ENTRY(_start)
 
 SECTIONS
 {
-	. = 0x00910000;
+	. = 0x0090A000;
 	LOAD_ADR = . ;
 	
 	. = ALIGN(4);
@@ -24,7 +24,7 @@ SECTIONS
 	.bss : { *(.bss) }
 	__bss_end = .;
 	
-	. = 0x00920000 ;
+	. = 0x00909000 ;
 	.stack :
 	{ 
 	STACK_ADR = . ;

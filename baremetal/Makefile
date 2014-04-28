@@ -8,10 +8,11 @@ OBJ = /home/shenchun/iauto/prebuilt/toolchains/arm-fsl-linux-gnueabi/4.6.2/bin/a
 DUMP= /home/shenchun/iauto/prebuilt/toolchains/arm-fsl-linux-gnueabi/4.6.2/bin/arm-none-linux-gnueabi-objdump
 
 test.bin: test.elf
-	$(OBJ) -O binary test.elf test.bin
+	$(OBJ) -O binary test.elf test-origin.bin
 	$(DUMP) -D test.elf > dump.log
+	$(OBJ) -I binary -O binary --pad-to 0x2000 --gap-fill=0x00 test-origin.bin test.bin
 
-test.elf: flash_header.S start.S main.c uart.c iomux-v3.c linker.lds
+test.elf: *.S *.c
 #	$(CC)   -D__ASSEMBLY__ -g  -Os   -fno-strict-aliasing -fno-common -ffixed-r8 -msoft-float -D__KERNEL__ -DTEXT_BASE=0x00907000 -fno-builtin -ffreestanding -nostdinc -isystem /home/shenchun/arm2010q1-202/Sourcery_G++_Lite/bin/../lib/gcc/arm-none-linux-gnueabi/4.4.1/include -pipe  -DCONFIG_ARM -D__ARM__ -marm  -mabi=aapcs-linux -mno-thumb-interwork -march=armv5     -o flash_header.o flash_header.S -c
 	
 #	$(CC)   -D__ASSEMBLY__ -g  -Os   -fno-strict-aliasing -fno-common -ffixed-r8 -msoft-float -D__KERNEL__ -DTEXT_BASE=0x00907000 -fno-builtin -ffreestanding -nostdinc -isystem /home/shenchun/arm2010q1-202/Sourcery_G++_Lite/bin/../lib/gcc/arm-none-linux-gnueabi/4.4.1/include -pipe  -DCONFIG_ARM -D__ARM__ -marm  -mabi=aapcs-linux -mno-thumb-interwork -march=armv5     -o start.o start.S -c
