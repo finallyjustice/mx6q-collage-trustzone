@@ -1,3 +1,5 @@
 该仓库用于实现imx6的trustzone
 
 1. baremetal用于调试裸机程序，开机加载secure程序，设置各种参数，切换到non-secure状态，加载启动正常的u-boot
+
+2. example-VE参考实现
