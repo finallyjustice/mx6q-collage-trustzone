@@ -9,7 +9,9 @@ typedef unsigned char  u8;
 #define LED_OFF	0
 
 #define Asm __asm__ volatile
-#define CP15_GET_SCR(x) Asm("mrc p15, 0, %0, c1, c1, 0":"=r"(x))
+#define CP15_GET_NSACR(x) 	Asm("mrc p15, 0, %0, c1, c1, 2":"=r"(x))
+#define CP15_GET_CPACR(x) 	Asm("mrc p15, 0, %0, c1, c0, 2":"=r"(x))
+#define CP15_SET_VBAR(x) 	Asm("mcr p15, 0, %0, c12, c0, 0"::"r"(x))
 #define ISB() Asm("isb")
 
 void led_ctrl(u32 led_flag)
@@ -26,16 +28,21 @@ void led_ctrl(u32 led_flag)
     }
 }
 
+void (*printf)(char *,...) = 0x27812cd8;
+
 int main(void)
 {
-	unsigned int csu_reg, i;
-	csu_reg = 0x020e0028;
-	__REG(csu_reg) = 0x00003810;	
-
-	for(i=0; i<10; i++){
-		led_ctrl(LED_OFF);
-		asm volatile ("smc #0\n\t");
-	}
+	unsigned int reg;
+	
+	CP15_GET_NSACR(reg);
+	printf("NSACR = %08x\n", reg);
+	
+	CP15_GET_CPACR(reg);
+	printf("CPACR = %08x\n", reg);
+	
+	//ISB();
+	led_ctrl(LED_OFF);
+	asm volatile ("smc #0\n\t");
 	
 	return 0;
 }
