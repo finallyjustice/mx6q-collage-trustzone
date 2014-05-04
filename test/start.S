@@ -16,3 +16,13 @@ _start:
 
 	sub sp, fp, #12
 	ldmfd sp, {fp, sp, pc}
+
+	
+	.text
+	.align  5
+	.arm
+	.global _smc_invoke
+_smc_invoke:
+	ldr r0, =0xe0
+	smc #0
+	bx lr

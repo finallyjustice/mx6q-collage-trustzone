@@ -56,8 +56,8 @@ typedef unsigned char  u8;
 //=================================end NSACR
 
 #define ID_RUN_UBOOT		(0xF0)
-#define ID_SWITCH_TO_NS		(0xF1)
-#define ID_SWITCH_TO_S		(0xF2)
-#define ID_EXE_CMD			(0xF3)
-#define ID_RUN_PRO			(0xF4)
+#define ID_SWITCH_TO_NS		(0xF4)
+#define ID_SWITCH_TO_S		(0xF8)
+#define ID_EXE_CMD			(0xFC)
+#define ID_RUN_PRO			(0xE0)
 

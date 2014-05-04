@@ -1,8 +1,8 @@
 #define ID_RUN_UBOOT		(0xF0)
-#define ID_SWITCH_TO_NS		(0xF1)
-#define ID_SWITCH_TO_S		(0xF2)
-#define ID_EXE_CMD			(0xF3)
-#define ID_RUN_PRO			(0xF4)
+#define ID_SWITCH_TO_NS		(0xF4)
+#define ID_SWITCH_TO_S		(0xF8)
+#define ID_EXE_CMD			(0xFC)
+#define ID_RUN_PRO			(0xE0)
 
 #define ns_image 0x27800000
 
@@ -40,11 +40,15 @@ monitor_VT:
 @ - Performs exception return
 @ ------------------------------------------------------------
 	.global SMC_Handler
-SMC_Handler:	
+SMC_Handler:
+	mov ip, lr
+	
+	cmp r0, #ID_EXE_CMD
+	beq exe_cmd
+	bxeq ip
+	
 	@srsdb sp!, #cpsr_mode_mon	
 	PUSH   {r0-r3}
-	
-	mov ip, lr
 	
 	cmp	r0, #ID_RUN_UBOOT
 	beq uboot_setting
@@ -108,6 +112,11 @@ uboot_setting:
 	LDR     r1, =S_STACK_SP              @ Get address of global
 	STR     r0, [r1]                     @ Save secure stack pointer
 		
+	bx lr
+	
+exe_cmd:
+	ldr r1, =0x40
+	mcr	p15, 0, r1, c15, c0, 1
 	bx lr
 
 @ led off	

@@ -81,7 +81,7 @@ int secure_main(void)
 						: "0" (arg_r0), "r" (arg_r1), "r" (arg_r2), "r" (arg_r3)
 						: "ip", "lr", "memory", "cc");
 
-	arg_r0 = ID_EXE_CMD;
+	arg_r0 = ID_RUN_PRO;
 
 	while(1) {
 		led_ctrl(LED_ON);
