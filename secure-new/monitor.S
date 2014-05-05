@@ -45,7 +45,6 @@ SMC_Handler:
 	
 	cmp r0, #ID_EXE_CMD
 	beq exe_cmd
-	bxeq ip
 	
 	@srsdb sp!, #cpsr_mode_mon	
 	PUSH   {r0-r3}
@@ -115,9 +114,11 @@ uboot_setting:
 	bx lr
 	
 exe_cmd:
-	ldr r1, =0x40
+@	stmdb sp!, {r0-r11, ip}
+	srsdb sp!, #cpsr_mode_mon
 	mcr	p15, 0, r1, c15, c0, 1
-	bx lr
+	rfeia sp!
+@	ldmia sp!, {r0-r11, pc}^
 
 @ led off	
 @	ldr r8, =0x020b4004

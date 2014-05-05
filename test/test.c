@@ -64,10 +64,10 @@ int main(void)
 	//ISB();
 	while(1){
 		led_ctrl(LED_OFF);
+		_smc_invoke();
 		printf("invoke smc\n");
-		//_smc_invoke();
 		//asm volatile ("smc #0\n\t");
-		
+#if 0		
 		arg_r0 = ID_EXE_CMD;
 		__asm__ volatile (".arch_extension sec\n\t"                               
 						"dsb\n\t"                                               
@@ -76,6 +76,7 @@ int main(void)
 						: "r" (arg_r0), "r" (arg_r1), "r" (arg_r2), "r" (arg_r3)
 						: "r4", "r5", "r6", "r7", "r8", "r9", "r10", "ip", "lr", \
 						"memory", "cc");
+#endif						
 				
 	}
 	

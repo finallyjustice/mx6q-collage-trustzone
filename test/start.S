@@ -13,6 +13,7 @@ _start:
 	sub fp, ip, #4
 	
     bl   main
+	
 
 	sub sp, fp, #12
 	ldmfd sp, {fp, sp, pc}
@@ -23,6 +24,14 @@ _start:
 	.arm
 	.global _smc_invoke
 _smc_invoke:
-	ldr r0, =0xe0
+	ldr r0, =SAVE_LR
+	str lr, [r0]
+	dsb
+	ldr r0, =0xFC
 	smc #0
+	ldr r0, =SAVE_LR
+	ldr lr, [r0]
 	bx lr
+	
+SAVE_LR:
+	.word 0
