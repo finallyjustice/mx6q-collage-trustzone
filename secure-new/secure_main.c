@@ -43,6 +43,23 @@ void target_init(void)
 	reg = 0x020e0028;
 	__REG(reg) = 0x00003810; // start address it 0, it means all internal ram will be use as secure ram	
 	
+	// SCU 
+	reg = 0x00a00054;
+	__REG(reg) = 0xfff; 
+	
+	// setting for gic
+	reg = 0x00a01080;
+	__REG(reg) = 0xffffffff; 
+	
+	for(reg = 0x00a01084; reg < 0x00a01094; reg = reg + 4)
+		__REG(reg) = 0xffffffff; 
+		
+	reg = 0x00a00104;
+	__REG(reg) = 0xf8; 
+		
+	reg = 0x00a00100;
+	__REG(reg) = 0xf; 
+	
 	// copy uboot from iram to sadram
 	for(i=0; i<160096; i++)
 		*dest++ = *src++;

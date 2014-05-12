@@ -44,13 +44,13 @@ SMC_Handler:
 	mov ip, lr
 	
 	cmp r0, #ID_EXE_CMD
-	beq exe_cmd
+	bleq exe_cmd
 	
 	@srsdb sp!, #cpsr_mode_mon	
 	PUSH   {r0-r3}
 	
 	cmp	r0, #ID_RUN_UBOOT
-	beq uboot_setting
+	bleq uboot_setting
 		
 	MRC     p15, 0, r9, c1, c1, 0        @ Read Secure Configuration Register data
 	TST     r9, #NS_BIT                  @ Is the NS bit set?
