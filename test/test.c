@@ -64,7 +64,7 @@ int main(void)
 	//ISB();
 	while(1){
 		led_ctrl(LED_OFF);
-		_smc_invoke();
+		//_smc_invoke();
 		printf("invoke smc\n");
 		//asm volatile ("smc #0\n\t");
 #if 0		
@@ -81,4 +81,27 @@ int main(void)
 	}
 	
 	return 0;
+}
+
+void trustzone_setting(void)
+{
+	u32 reg;
+	
+	// CSU
+	for(reg = 0x021C0000; reg < 0x021C00A0; reg = reg + 4)
+		__REG(reg) = 0x00ff00ff; 
+		
+	// SCU 
+	reg = 0x00a00054;
+	__REG(reg) = 0xfff; 
+	
+	// GIC 
+	reg = 0x00a01080;
+	__REG(reg) = 0x0000ffff; 
+	
+	for(reg = 0x00a01084; reg < 0x00a01094; reg = reg + 4)
+		__REG(reg) = 0xffffffff; 
+		
+	//reg = 0x00a01f00;
+	//__REG(reg) = 0x00008000; 
 }
