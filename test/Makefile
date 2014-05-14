@@ -2,10 +2,10 @@
 
 all: test.bin
 
-CC = /home/shenchun/iauto/prebuilt/toolchains/arm-fsl-linux-gnueabi/4.6.2/bin/arm-none-linux-gnueabi-gcc
-LD = /home/shenchun/iauto/prebuilt/toolchains/arm-fsl-linux-gnueabi/4.6.2/bin/arm-none-linux-gnueabi-ld
-OBJ = /home/shenchun/iauto/prebuilt/toolchains/arm-fsl-linux-gnueabi/4.6.2/bin/arm-none-linux-gnueabi-objcopy
-DUMP= /home/shenchun/iauto/prebuilt/toolchains/arm-fsl-linux-gnueabi/4.6.2/bin/arm-none-linux-gnueabi-objdump
+CC  = arm-none-linux-gnueabi-gcc
+LD  = arm-none-linux-gnueabi-ld
+OBJ = arm-none-linux-gnueabi-objcopy
+DUMP= arm-none-linux-gnueabi-objdump
 
 test.bin: test.elf
 	$(OBJ) -O binary test.elf test.bin

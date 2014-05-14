@@ -12,6 +12,7 @@ typedef unsigned char  u8;
 #define CP15_GET_SCR(x) 	Asm("mrc p15, 0, %0, c1, c1, 0":"=r"(x))
 #define CP15_GET_NSACR(x) 	Asm("mrc p15, 0, %0, c1, c1, 2":"=r"(x))
 #define CP15_GET_CPACR(x) 	Asm("mrc p15, 0, %0, c1, c0, 2":"=r"(x))
+#define CP15_GET_MIDR(x) 	Asm("mrc p15, 0, %0, c0, c0, 0":"=r"(x))
 
 #define CP15_SET_SCR(x)		Asm("mcr p15, 0, %0, c1,  c1, 0"::"r"(x))
 #define CP15_SET_VBAR(x) 	Asm("mcr p15, 0, %0, c12, c0, 0"::"r"(x))
@@ -83,6 +84,15 @@ int main(void)
 	return 0;
 }
 
+#define ICDDCR		0x00a01000
+#define ICDISR0		0x00a01080
+#define ICDISRnS	0x00a01084
+#define ICDISRnE	0x00a01094
+#define ICDSGIR		0x00a01f00
+#define ICCICR		0x00a00100
+#define ICCBPR		0x00a00104
+
+
 void trustzone_setting(void)
 {
 	u32 reg;
@@ -90,18 +100,49 @@ void trustzone_setting(void)
 	// CSU
 	for(reg = 0x021C0000; reg < 0x021C00A0; reg = reg + 4)
 		__REG(reg) = 0x00ff00ff; 
-		
-	// SCU 
+
+	// SCU 	
+	reg = 0x00a00050;
+	__REG(reg) = 0xf;  
+	
 	reg = 0x00a00054;
-	__REG(reg) = 0xfff; 
+	__REG(reg) = 0xfff;   
 	
-	// GIC 
-	reg = 0x00a01080;
-	__REG(reg) = 0x0000ffff; 
+	// GIC	
+	// ICDISR Secure Interrupt Security Registers
+	reg = ICDISR0;
+	__REG(reg) = 0xf800ffff;
 	
-	for(reg = 0x00a01084; reg < 0x00a01094; reg = reg + 4)
+	for(reg = ICDISRnS; reg < ICDISRnE; reg = reg + 4)
 		__REG(reg) = 0xffffffff; 
-		
-	//reg = 0x00a01f00;
-	//__REG(reg) = 0x00008000; 
+
+#if 1		
+	// ICDDCR Banked Distributor Control Register
+	reg = ICDDCR;
+	__REG(reg) = 0x3;
+	
+	reg = ICDSGIR;
+	__REG(reg) = 1<<15;
+#endif	
+	// ICCBPR Banked Binary Point Register
+	reg = ICCBPR;
+	__REG(reg) = 0xf8;
+#if 1	
+	// ICCICR Banked CPU Interface Control Register
+	reg = ICCICR;
+	__REG(reg) = 0xf;
+#endif	
+
+	// L2_Cache setting
+	reg = 0x00a02000 + 0x108;
+	__REG(reg) = 0x132;
+	
+	reg = 0x00a02000 + 0x10c;
+	__REG(reg) = 0x132;
+	
+	reg = 0x00a02000 + 0xf60;
+	__REG(reg) = 0x40800000;
+	
+	reg = 0x00a02000 + 0xf80;
+	__REG(reg) = 0x3;
 }
