@@ -3,6 +3,7 @@
 #define ID_SWITCH_TO_S		(0xF8)
 #define ID_EXE_CMD			(0xFC)
 #define ID_RUN_PRO			(0xE0)
+#define ID_EXE_CP15_WR		(0xE4)
 
 #define ns_image 0x27800000
 
@@ -17,18 +18,18 @@
 @ Monitor mode vector table
 @ ------------------------------------------------------------
 	.section .vector, "ax"
-	.global monitor_VT
+	.global monitor_vetor_table
 	.align 5
-monitor_VT:
-  @ Monitor's
-  NOP     @ Reset      - not used by Monitor
-  NOP     @ Undef      - not used by Monitor
-  B       SMC_Handler
-  NOP     @ Prefetch   - can by used by Monitor
-  NOP     @ Data abort - can by used by Monitor
-  NOP     @ RESERVED
-  NOP     @ IRQ        - can by used by Monitor
-  NOP     @ FIQ        - can by used by Monitor
+monitor_vetor_table:
+	@ Monitor's
+	NOP     @ Reset      - not used by Monitor
+	NOP     @ Undef      - not used by Monitor
+	B       SMC_Handler
+	NOP     @ Prefetch   - can by used by Monitor
+	NOP     @ Data abort - can by used by Monitor
+	NOP     @ RESERVED
+	NOP     @ IRQ        - can by used by Monitor
+	NOP     @ FIQ        - can by used by Monitor
 
 @ ------------------------------------------------------------
 @ SMC Handler
@@ -41,16 +42,17 @@ monitor_VT:
 @ ------------------------------------------------------------
 	.global SMC_Handler
 SMC_Handler:
-	mov ip, lr
-	
 	cmp r0, #ID_EXE_CMD
-	bleq exe_cmd
+	beq exe_cmd
 	
-	@srsdb sp!, #cpsr_mode_mon	
-	PUSH   {r0-r3}
+	cmp r0, #ID_EXE_CP15_WR
+	beq exe_cp15_wr
 	
 	cmp	r0, #ID_RUN_UBOOT
-	bleq uboot_setting
+	beq uboot_setting
+
+skip_uboot_setting:
+	PUSH   {r0-r3}
 		
 	MRC     p15, 0, r9, c1, c1, 0        @ Read Secure Configuration Register data
 	TST     r9, #NS_BIT                  @ Is the NS bit set?
@@ -77,7 +79,7 @@ SMC_Handler:
 	STMFD   r2!, {r4-r12}               @ Save r4 to r12
 	@ ADD SUPPORT FOR SPs
 	MRS     r4, spsr                    @ Also get a copy of the SPSR
-	STMFD   r2!, {r4, ip}               @ Save original SPSR and LR
+	STMFD   r2!, {r4, lr}               @ Save original SPSR and LR
 	STR     r2, [r0]                    @ Save updated pointer back, r0 and r2 now free
 	
 	@ Restore other world's registers, SPSR and LR
@@ -91,9 +93,7 @@ SMC_Handler:
 	CLREX
 	
 	POP     {r0-r3}
-
 	MOVS    pc, lr
-	@rfeia sp!
 	
 uboot_setting: 
 	/* Prepare the first NT OS start address PC and CPSR */
@@ -111,14 +111,19 @@ uboot_setting:
 	LDR     r1, =S_STACK_SP              @ Get address of global
 	STR     r0, [r1]                     @ Save secure stack pointer
 		
-	bx lr
+	b	skip_uboot_setting
 	
 exe_cmd:
-@	stmdb sp!, {r0-r11, ip}
-	srsdb sp!, #cpsr_mode_mon
-	mcr	p15, 0, r1, c15, c0, 1
+@	srsdb sp!, #cpsr_mode_mon
+	stmdb sp!, {r0-r12, lr}
+	bl invoke_cmd
+@	rfeia sp!
+	ldmia sp!, {r0-r12, pc}^
+	
+exe_cp15_wr:
+	srsdb sp!, #cpsr_mode_mon	
+	mcr  p15, 0, r1, c15, c0, 1
 	rfeia sp!
-@	ldmia sp!, {r0-r11, pc}^
 
 @ led off	
 @	ldr r8, =0x020b4004
