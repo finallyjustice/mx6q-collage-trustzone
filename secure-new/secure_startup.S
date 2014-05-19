@@ -11,28 +11,44 @@
 #define cpsr_fiq_bit	(0x40)
 #define cpsr_asyc_bit	(0x100)
 
-.text
-.arm
-.align 5
-.global _start_secure
+	.text
+	.arm
+	.align 5
+	.global _start_secure
 _start_secure:
 	cpsid if, #cpsr_mode_mon
 	ldr sp, =0x00908000
 	mov fp, #0	
-	
-	bl monitor_init
-	  	
+
 	cpsid if, #cpsr_mode_svc
 	ldr sp, =0x00909000
 	
+	@ Disable MMU
+    mrc p15, 0, r1, c1, c0, 0       @ Read Configuration Register
+    bic r1, r1, #0x1
+    mcr p15, 0, r1, c1, c0, 0       @ Write Configuration Register
+
 	@disable cache & table type
     mrc p15, 0, r0, c1, c0, 0
     bic r0, r0, #0x00004	@disable data cache
     bic r0, r0, #0x01000	@disable instruction cache
+	orr r0, r0, #(1<<14)	@enable RR
     mcr p15, 0, r0, c1, c0, 0
 
     @invalidate TLBs
     mov r0, #0x0
     mcr p15, 0, r0, c8, c7, 0
 	
-	bl secure_main
+	@ Invalidate TLBs
+    mov r1, #0x0
+    mcr p15, 0, r1, c8, c3, 0
+
+	@Auxillary control register
+	mrc     p15, 0, r0, c1, c0, 1
+	ldr     r1, =0x41
+	orr     r0, r0, r1
+	mcr     p15, 0, r0, c1, c0, 1
+
+	bl target_init
+
+	bl start_uboot

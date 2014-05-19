@@ -2,8 +2,10 @@
 #define ID_SWITCH_TO_NS		(0xF4)
 #define ID_SWITCH_TO_S		(0xF8)
 #define ID_EXE_CMD			(0xFC)
+
 #define ID_RUN_PRO			(0xE0)
 #define ID_EXE_CP15_WR		(0xE4)
+#define ID_CO_CPU_WR		(0xE8)
 
 #define ns_image 0x27800000
 
@@ -13,6 +15,11 @@
 #define cpsr_fiq_bit	(0x40)
 
 .equ NS_BIT,	0x1
+
+.macro ACTLR_WRITE reg
+    mcreq	p15, 0, \reg, c1, c0, 1
+.endm
+
 
 @ ------------------------------------------------------------
 @ Monitor mode vector table
@@ -35,23 +42,23 @@ monitor_vetor_table:
 @ SMC Handler
 @
 @ - Detect which world executed SMC
-@ - Saves state to appropiate stack
+@ - Saves state to appropriate stack
 @ - Restores other worlds state
 @ - Switches world
 @ - Performs exception return
 @ ------------------------------------------------------------
+	.align 5
 	.global SMC_Handler
 SMC_Handler:
 	cmp r0, #ID_EXE_CMD
 	beq exe_cmd
 	
 	cmp r0, #ID_EXE_CP15_WR
-	beq exe_cp15_wr
+	beq	exe_cp15_wr
 	
-	cmp	r0, #ID_RUN_UBOOT
-	beq uboot_setting
+	cmp r0, #ID_RUN_PRO
+	beq exe_run_pro
 
-skip_uboot_setting:
 	PUSH   {r0-r3}
 		
 	MRC     p15, 0, r9, c1, c1, 0        @ Read Secure Configuration Register data
@@ -95,7 +102,27 @@ skip_uboot_setting:
 	POP     {r0-r3}
 	MOVS    pc, lr
 	
-uboot_setting: 
+exe_cmd:
+	stmdb sp!, {r0-r12, lr}
+	bl invoke_cmd
+	ldmia sp!, {r0-r12, pc}^
+
+exe_cp15_wr:
+	srsdb sp!, #cpsr_mode_mon
+	mcr  p15, 0, r1, c15, c0, 1
+	rfeia sp!
+		
+exe_run_pro:
+	stmdb sp!, {r0-r12, lr}
+
+	cmp r1, #0x04	/*ACTLR*/
+	ACTLR_WRITE	r2
+	
+	ldmia sp!, {r0-r12, pc}^
+
+	.align 5
+	.global start_uboot
+start_uboot:
 	/* Prepare the first NT OS start address PC and CPSR */
 	LDR     r0, =NS_STACK_LIMIT         
 	STMFD   r0!, {r4-r12}              
@@ -111,24 +138,14 @@ uboot_setting:
 	LDR     r1, =S_STACK_SP              @ Get address of global
 	STR     r0, [r1]                     @ Save secure stack pointer
 		
-	b	skip_uboot_setting
+	smc #0
 	
-exe_cmd:
-@	srsdb sp!, #cpsr_mode_mon
-	stmdb sp!, {r0-r12, lr}
-	bl invoke_cmd
-@	rfeia sp!
-	ldmia sp!, {r0-r12, pc}^
-	
-exe_cp15_wr:
-	srsdb sp!, #cpsr_mode_mon	
-	mcr  p15, 0, r1, c15, c0, 1
-	rfeia sp!
-
-@ led off	
-@	ldr r8, =0x020b4004
-@	ldr r7, =0x3
-@	str r7, [r8]	
+1:
+	ldr r8, =0x020b4004
+	ldr r7, =0x3
+	str r7, [r8]
+	smc #0
+	b 1b
 	
 @ ------------------------------------------------------------
 @ Space reserved for stacks
