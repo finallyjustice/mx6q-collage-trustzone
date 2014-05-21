@@ -117,42 +117,40 @@ void target_scu_init(void)
 }
 
 // GIC interrupt control unit
-#define ICDDCR		0x00a01000
-#define ICDISR0		0x00a01080
-#define ICDISRnS	0x00a01084
-#define ICDISRnE	0x00a01094
-#define ICDSGIR		0x00a01f00
-#define ICCICR		0x00a00100
-#define ICCBPR		0x00a00104
+#define ICDBASE		0x00a01000
+#define ICDDCR		0x000
+#define ICDICTR		0x004
+#define ICDISR0		0x080
+#define ICDSGIR		0xf00
+
+#define ICCBASE		0x00a00100
+#define ICCICR		0x00
+#define ICCPMR		0x04
+#define ICCBPR		0x08
+#define ICCABPR		0x1c
+
 void target_gic_init(void)
 {
-	u32 reg;
+	u32 i;
+
+	u32 ITLinesNumber = (*((u32*)(ICDBASE+ICDICTR))) & 0x1f;
 	
 	// ICDISR Secure Interrupt Security Registers
-	// cortex-a9 only use PPI(31-27), so setting PPI and SGI non-secure
-	reg = ICDISR0;
-	__REG(reg) = 0xf800ffff;
+	// cortex-a9 only use PPI(31-27), so setting PPI(31-27) SGI(0-7) non-secure
+	__REG(ICDBASE + ICDISR0) = 0xf80000ff;
 	
 	// set all SPI non-secure, depend on Interrupt Controller Type Register (ICDICTR)ITLinesNumber
-	for(reg = ICDISRnS; reg < ICDISRnE; reg = reg + 4)
-		__REG(reg) = 0xffffffff; 
+	for(i = 1; i <= (ITLinesNumber+1); i++)
+		__REG(ICDBASE + ICDISR0 + 4*i) = 0xffffffff;
 
-#if 1
 	// ICDDCR Banked Distributor Control Register
-	reg = ICDDCR;
-	__REG(reg) = 0x3;
+	//__REG(ICDBASE + ICDDCR) = 0x1;
 	
-	reg = ICDSGIR;
-	__REG(reg) = (1<<15);
-#endif	
-	// ICCBPR Banked Binary Point Register, this bit must setting in secure status in my opinion
-	reg = ICCBPR;
-	__REG(reg) = 0xf8;
-#if 1	
+	// ICCPMR Interrupt Priority Mask Register
+	__REG(ICCBASE + ICCPMR) = 0xf8;
+
 	// ICCICR Banked CPU Interface Control Register
-	reg = ICCICR;
-	__REG(reg) = 0xf;
-#endif	
+	//__REG(ICCBASE + ICCICR) = 0x1f;
 }
 
 void target_init(void)
@@ -214,9 +212,27 @@ int secure_main(void)
 	return 0;
 }
 
-u32 invoke_cmd(u32 cmd, u32 value, u32 dreg, u32 reserve)
+u32 invoke_reg_wr(u32 cmd, u32 value, u32 dreg, u32 reserve)
 {
 	__REG(dreg) = value;
 	
 	return 0;
+}
+
+u32 invoke_cp15_wr(u32 cmd, u32 type, u32 value, u32 reserve)
+{
+
+	switch(type){
+	case 0xF000: //ACTLR
+		asm volatile("mcr p15, 0, %0, c1,  c0,  1\n\t"::"r"(value):"memory", "cc");
+		break;
+	case 0xF004: 
+		asm volatile("mcr p15, 0, %0, c15, c0,  1\n\t"::"r"(value):"memory", "cc");
+		break;
+
+	default:
+		break;
+	}
+	
+	return value;
 }
