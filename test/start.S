@@ -8,6 +8,9 @@
 	.arm
 	.global first_go
 first_go:
+	stmdb sp!, {r0-r12, lr}
+	bl test	
+	ldmia sp!, {r0-r12, pc}
 	b _start
 
 	.section .vector, "ax"

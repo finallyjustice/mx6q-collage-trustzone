@@ -42,6 +42,13 @@ void led_ctrl(u32 led_flag)
 
 void (*printf)(char *,...) = 0x27812cd8;
 
+void test(void)
+{
+	u32 val;
+	asm volatile("mrc p15, 0, %0, c0,  c1, 1":"=r"(val));
+	printf(" ID_PFR1 = 0x%08x\n", val);
+}
+
 int main(void)
 {
 	unsigned int reg;

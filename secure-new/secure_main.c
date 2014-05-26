@@ -12,6 +12,7 @@ typedef unsigned char  u8;
 #define CP15_SET_NSACR(x)	Asm("mcr p15, 0, %0, c1,  c1, 2"::"r"(x))
 #define CP15_SET_CPACR(x)	Asm("mcr p15, 0, %0, c1,  c0, 2"::"r"(x))
 
+#define CP15_GET_ID_PFR1(x)	Asm("mrc p15, 0, %0, c0,  c1, 1":"=r"(x))
 #define CP15_GET_SCR(x)		Asm("mrc p15, 0, %0, c1,  c1, 0":"=r"(x))
 
 //For Secure Configuration Register
@@ -52,14 +53,10 @@ typedef unsigned char  u8;
 #define NSACR_SETTING (NSACR_NS_SMP_BIT | NSACR_TL_BIT |NSACR_PLE_BIT| NSACR_CP11_BIT | NSACR_CP10_BIT)
 //=================================end NSACR
 
-#define ID_RUN_UBOOT		(0xF0)
-#define ID_SWITCH_TO_NS		(0xF4)
-#define ID_SWITCH_TO_S		(0xF8)
-#define ID_EXE_CMD			(0xFC)
-#define ID_RUN_PRO			(0xE0)
-#define ID_EXE_CP15_WR		(0xE4)
-
 extern u32 monitor_vetor_table;
+extern void cpu_init(void);
+extern void uart_init(void);
+extern void uart_puts(const char *s);
 
 void delay(void)
 {
@@ -153,18 +150,37 @@ void target_gic_init(void)
 	//__REG(ICCBASE + ICCICR) = 0x1f;
 }
 
+void display_version(void)
+{
+	u32 ID_PFR1;
+
+	CP15_GET_ID_PFR1(ID_PFR1);
+	if( 0 != ((ID_PFR1 >> 4) & 0xf) )
+		uart_puts("this target support security extensions\n");
+	else
+		uart_puts("this target not support security extensions\n");
+
+	if( 0 != ((ID_PFR1 >> 12) & 0xf) )
+		uart_puts("this target support virtualization extensions\n");
+	else
+		uart_puts("this target not support virtualization extensions\n");
+}
+
 void target_init(void)
 {
 	u32 i;
 	char* dest = (char*)0x27800000;
-	char* src  = (char*)0x0090b000;	
+	char* src  = (char*)0x0090b000;
+
+	cpu_init();
+	uart_init();
+	uart_puts("\n");
+	display_version();
+
 	
 	CP15_SET_MVBAR(&monitor_vetor_table);
-	
 	CP15_SET_SCR(0x30);
-	
-	CP15_SET_NSACR(0x00073fff);
-	
+	CP15_SET_NSACR(0x00063fff);
 	CP15_SET_CPACR(0x0fffffff); // Full access for cp11 and cp10
 
 	target_csu_init();
@@ -183,38 +199,10 @@ void target_init(void)
 #endif	
 }
 
-int secure_main(void)
-{	
-	register unsigned int arg_r0 asm("r0") = ID_RUN_UBOOT;
-	register unsigned int arg_r1 asm("r1") = 2;
-	register unsigned int arg_r2 asm("r2") = 3;
-	register unsigned int arg_r3 asm("r3") = 4;
-	
-	__asm__ volatile (".arch_extension sec\n\t"                               
-						"dsb\n\t"                                               
-						"smc #0\n\t"                                            
-						: "=r" (arg_r0)                                         
-						: "r" (arg_r0), "r" (arg_r1), "r" (arg_r2), "r" (arg_r3)
-						: "ip", "lr", "memory", "cc");
-
-	while(1) {
-		led_ctrl(LED_ON);
-		arg_r0 = ID_RUN_PRO;
-		__asm__ volatile (".arch_extension sec\n\t"                               
-						"dsb\n\t"                                               
-						"smc #0\n\t"                                            
-						: "=r" (arg_r0)                                         
-						: "r" (arg_r0), "r" (arg_r1), "r" (arg_r2), "r" (arg_r3)
-						: "ip", "lr", "memory", "cc");
-		//asm volatile ("smc #0\n\t");		
-	}
-	
-	return 0;
-}
-
 u32 invoke_reg_wr(u32 cmd, u32 value, u32 dreg, u32 reserve)
 {
 	__REG(dreg) = value;
+	uart_puts("\n\r==write the register in monitor\n\r");
 	
 	return 0;
 }
@@ -225,9 +213,11 @@ u32 invoke_cp15_wr(u32 cmd, u32 type, u32 value, u32 reserve)
 	switch(type){
 	case 0xF000: //ACTLR
 		asm volatile("mcr p15, 0, %0, c1,  c0,  1\n\t"::"r"(value):"memory", "cc");
+		uart_puts("\n\r==write the ACTLR in monitor\n\r");
 		break;
 	case 0xF004: 
 		asm volatile("mcr p15, 0, %0, c15, c0,  1\n\t"::"r"(value):"memory", "cc");
+		uart_puts("\n\r==write the 0 c15 c0 1 in monitor\n\r");
 		break;
 
 	default:
