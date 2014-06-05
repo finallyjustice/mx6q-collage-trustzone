@@ -1,57 +1,125 @@
-#define cpsr_mode_use	(0x10)
-#define cpsr_mode_fiq	(0x11)
-#define cpsr_mode_irq	(0x12)
-#define cpsr_mode_svc	(0x13)
-#define cpsr_mode_mon	(0x16)
-#define cpsr_mode_abt	(0x17)
-#define cpsr_mode_und	(0x1b)
-#define cpsr_mode_sys	(0x1F)
+#include "asm-inc.h"
 
-#define cpsr_irq_bit	(0x80)
-#define cpsr_fiq_bit	(0x40)
-#define cpsr_asyc_bit	(0x100)
+	.text
+	.align 4
+	.globl _start
+_start:
+    B _start_secure
+
+	.align 4
+	.global secure_exception_vectors
+secure_exception_vectors:
+	B	_reset_handler		@- can by used by secure
+	B	_undefined_handler	@- can by used by secure
+	B	_swi_handler		@- can by used by secure
+	B	_prefetch_handler	@- can by used by secure
+	B	_abort_handler		@- can by used by secure
+	B	_reserved_vector	@- this is reserved for hypvisor mode
+	B	_irq_handler		@- can by used by secure
+	B	_fiq_handler		@- can by used by secure
+
+_reset_handler:
+	mov	r0, #0x0
+	BL	secure_exception_handler
+	B	_reset_handler
+
+_undefined_handler:
+	mov	r0, #0x4
+	BL	secure_exception_handler
+	B	_undefined_handler
+
+_swi_handler:
+	mov	r0, #0x8
+	BL	secure_exception_handler
+	B	_swi_handler
+
+_prefetch_handler:
+	mov	r0, #0xc
+	BL	secure_exception_handler
+	B	_prefetch_handler
+
+_abort_handler:
+	mov	r0, #0x10
+	BL	secure_exception_handler
+	B	_abort_handler
+
+_reserved_vector:
+	mov	r0, #0x14
+	BL	secure_exception_handler
+	B	_reserved_vector
+
+_irq_handler:
+	mov	r0, #0x18
+	BL	secure_exception_handler
+	B	_irq_handler
+
+_fiq_handler:
+	mov	r0, #0x1c
+	BL	secure_exception_handler
+	B	_fiq_handler
 
 	.text
 	.arm
-	.align 5
+	.align 4
 	.global _start_secure
 _start_secure:
-	cpsid   if, #cpsr_mode_mon
-	ldr     sp, =0x00908000
-	mov     fp, #0	
-
-	cpsid   if, #cpsr_mode_svc
-	ldr     sp, =0x00909000
-
-	bl  Init_aips
-	bl  Init_clock
-
-	@disable cache mmu & table type
-    mrc     p15, 0, r0, c1, c0, 0
-    bic     r0, r0, #(0x1  <<13)    /* Normal exception vectors, base address 0x00000000 */
-    bic     r0, r0, #(0x1  <<12)    /* disable I Cache */
-    bic     r0, r0, #(0x1  <<2)     /* disable D Cache */
-    bic     r0, r0, #(0x1  <<0)     /* disable MMU */
-	orr     r0, r0, #(0x1  <<14)    /* enable RR */
-    mcr     p15, 0, r0, c1, c0, 0
-
-    @invalidate TLBs
-    mov     r0, #0x0
-    mcr     p15, 0, r0, c8, c7, 0
+	adr		ip, save_stack
+	stmia	ip, {lr}
 	
-	@ Invalidate TLBs
-    mov     r1, #0x0
-    mcr     p15, 0, r1, c8, c3, 0
+@ set secure world VBAR 
+	ldr     r1, =secure_exception_vectors   @ Load base address into r0
+	mcr     p15, 0, r1, c12, c0, 0          @ Write secure world VBAR
 
-	@Auxillary control register
+@ set MVBAR
+	ldr     r1, =monitor_exception_vectors  @ Get address of Monitor's vector table
+    mcr     p15, 0, r1, c12, c0, 1          @ Write Monitor Vector Base Address Registe
+
+@ Initialize stacks for some modes
+@ set FIQ stack
+	cpsid   if, #cpsr_mode_fiq
+	ldr     sp, =FIQ_MODE_STACK_BASE
+
+@ set IRQ stack
+	cpsid   if, #cpsr_mode_irq
+	ldr     sp, =IRQ_MODE_STACK_BASE
+
+@ set ABT stack
+	cpsid   if, #cpsr_mode_abt
+	ldr     sp, =ABT_MODE_STACK_BASE
+
+@ set UND stack
+	cpsid   if, #cpsr_mode_und
+	ldr     sp, =UND_MODE_STACK_BASE
+
+@ set user/system stack
+	cpsid   if, #cpsr_mode_sys
+	ldr     sp, =SYS_MODE_STACK_BASE
+
+@ set monitor stack
+	cpsid   if, #cpsr_mode_mon
+	ldr     sp, =MON_MODE_STACK_BASE
+
+@ set SVC stack
+	cpsid   if, #cpsr_mode_svc
+	ldr     sp, =SVC_MODE_STACK_BASE
+
+@ bank System Control Register
+	mrc     p15, 0, r0, c1, c0, 0
+	bic     r0, r0, #(0x1  <<13)    /* base address 0x00000000 */
+	bic     r0, r0, #(0x1  <<12)    /* disable I Cache */
+	bic     r0, r0, #(0x1  <<2)     /* disable D Cache */
+	bic     r0, r0, #(0x1  <<0)     /* disable MMU */
+	orr     r0, r0, #(0x1  <<14)    /* enable RR */
+	mcr     p15, 0, r0, c1, c0, 0
+	
+@ bank Auxillary control register
 	mrc     p15, 0, r0, c1, c0, 1
-	ldr     r1, =0x41
-	orr     r0, r0, r1
+	bic     r0, r0, #(0x1  <<6)     /* enable SMP bit */
+	orr     r0, r0, #(0x1  <<0)     /* enable FW bit */
 	mcr     p15, 0, r0, c1, c0, 1
 
 /* Init .bss */
 /* Clear the .bss section (zero init) */
-
     LDR     r1,=__bss_start
     LDR     r2,=__bss_end
     MOV     r3,#0
@@ -61,49 +129,15 @@ _start_secure:
     BLT     1b
 
 /* Branch to C Library entry point */
-	bl target_init
+	bl 		target_init
 
-	bl start_uboot
+	adr		ip, save_stack
+	ldmia	ip, {lr}
+	mov		r3, lr	/* save uboot next pc point to r3 */
+	bl		start_uboot
 
-Init_aips:	
-	ldr r0, =0x0207C000
-	ldr r1, =0x77777777
-	str r1, [r0, #0x0]
-	str r1, [r0, #0x4]
-	ldr r1, =0x0
-	str r1, [r0, #0x40]
-	str r1, [r0, #0x44]
-	str r1, [r0, #0x48]
-	str r1, [r0, #0x4C]
-	str r1, [r0, #0x50]
+/* We should never reach here */
+    b   .
 
-	ldr r0, =0x0217C000
-	ldr r1, =0x77777777
-	str r1, [r0, #0x0]
-	str r1, [r0, #0x4]
-	ldr r1, =0x0
-	str r1, [r0, #0x40]
-	str r1, [r0, #0x44]
-	str r1, [r0, #0x48]
-	str r1, [r0, #0x4C]
-	str r1, [r0, #0x50]
-	bx lr
-
-Init_clock:
-	/* Restore the default values in the Gate registers */
-	ldr r0, =0x020c4000
-	ldr r1, =0xC0003F
-	str r1, [r0, #0x68]
-	ldr r1, =0x30FC00
-	str r1, [r0, #0x6c]
-	ldr r1, =0xFFFC000
-	str r1, [r0, #0x70]
-	ldr r1, =0x3FF00000
-	str r1, [r0, #0x74]
-	ldr r1, =0xFFF300
-	str r1, [r0, #0x78]
-	ldr r1, =0xF0000C3
-	str r1, [r0, #0x7c]
-	ldr r1, =0x3FC
-	str r1, [r0, #0x80]
-	bx lr	
+save_stack:
+	.space 4*4

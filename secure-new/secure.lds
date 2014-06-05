@@ -1,14 +1,16 @@
 OUTPUT_FORMAT("elf32-littlearm", "elf32-littlearm", "elf32-littlearm")
 OUTPUT_ARCH(arm)
-ENTRY(_start_secure)
+ENTRY(_start)
 
 SECTIONS
 {
-	. = 0x0090A000;
+	. = 0x00910000;
 	LOAD_ADR = . ;
-	
+
+	/*
 	. = ALIGN(4);
 	.flash_header : { *(.ivt) }
+	*/
 	
 	. = ALIGN(4);
 	.text : { *(.text) }

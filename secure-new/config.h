@@ -1,6 +1,7 @@
 typedef unsigned long  u32;
 typedef unsigned short u16;
 typedef unsigned char  u8;
+
 #define __REG(x)        (*((volatile u32 *)(x)))
 #define __REG16(x)      (*((volatile u16 *)(x)))
 #define __REG8(x)       (*((volatile u8 *)(x)))
@@ -80,66 +81,9 @@ typedef unsigned long long iomux_v3_cfg_t;
 #define  MX6Q_PAD_SD3_DAT6__UART1_RXD    \
 	(_MX6Q_PAD_SD3_DAT6__UART1_RXD | MUX_PAD_CTRL(MX6Q_UART_PAD_CTRL))
 
-int mxc_iomux_v3_setup_pad(u32 base,iomux_v3_cfg_t pad)
-{
-	u32 mux_ctrl_ofs = (pad & MUX_CTRL_OFS_MASK) >> MUX_CTRL_OFS_SHIFT;
-	u32 mux_mode = (pad & MUX_MODE_MASK) >> MUX_MODE_SHIFT;
-	u32 sel_input_ofs =
-		(pad & MUX_SEL_INPUT_OFS_MASK) >> MUX_SEL_INPUT_OFS_SHIFT;
-	u32 sel_input =
-		(pad & MUX_SEL_INPUT_MASK) >> MUX_SEL_INPUT_SHIFT;
-	u32 pad_ctrl_ofs =
-		(pad & MUX_PAD_CTRL_OFS_MASK) >> MUX_PAD_CTRL_OFS_SHIFT;
-	u32 pad_ctrl = (pad & MUX_PAD_CTRL_MASK) >> MUX_PAD_CTRL_SHIFT;
-
-	if (mux_ctrl_ofs)
-		REG_WR(base, mux_ctrl_ofs, mux_mode);
-
-	if (sel_input_ofs)
-		REG_WR(base, sel_input_ofs, sel_input);
-
-	if (!(pad_ctrl & NO_PAD_CTRL) && pad_ctrl_ofs) {
-		if (pad_ctrl & PAD_CTL_LVE) {
-			/* Set the bit for LVE */
-			pad_ctrl |= (1 << PAD_CTL_LVE_OFFSET);
-			pad_ctrl &= ~(PAD_CTL_LVE);
-		}
-		REG_WR(base, pad_ctrl_ofs, pad_ctrl);
-	}
-
-	return 0;
-}
-
-void cpu_init(void)
-{
-	u32 val, reg;
-	
-	/* Increase the VDDSOC to 1.2V */
-	val = REG_RD(ANATOP_BASE_ADDR, HW_ANADIG_REG_CORE);
-	val &= ~BM_ANADIG_REG_CORE_REG2_TRG;
-	val |= BF_ANADIG_REG_CORE_REG2_TRG(0x14);
-	REG_WR(ANATOP_BASE_ADDR, HW_ANADIG_REG_CORE, val);
-
-	/* Need to power down PCIe */
-	val = REG_RD(IOMUXC_BASE_ADDR, IOMUXC_GPR1_OFFSET);
-	val |= (0x1 << 18);
-	REG_WR(IOMUXC_BASE_ADDR, IOMUXC_GPR1_OFFSET, val);
-
-	REG_WR(SNVS_BASE_ADDR, 0x64, 0x41736166);/*set LPPGDR*/
-	reg = REG_RD(SNVS_BASE_ADDR, 0x4c);
-	reg |= (1 << 3);
-	REG_WR(SNVS_BASE_ADDR, 0x4c, reg);/*clear LPSR*/
-
-	/* UART1 TXD */
-	mxc_iomux_v3_setup_pad(IOMUXC_BASE_ADDR, MX6Q_PAD_SD3_DAT7__UART1_TXD);
-	/* UART1 RXD */
-	mxc_iomux_v3_setup_pad(IOMUXC_BASE_ADDR, MX6Q_PAD_SD3_DAT6__UART1_RXD);
-}
-
 
 #define UART_PHYS 0x02020000  // for debug uart1
-
-/* Register definitions */
+	/* Register definitions */
 #define URXD  0x0  /* Receiver Register */
 #define UTXD  0x40 /* Transmitter Register */
 #define UCR1  0x80 /* Control Register 1 */
@@ -155,8 +99,8 @@ void cpu_init(void)
 #define UBMR  0xa8 /* BRM Modulator Register */
 #define UBRC  0xac /* Baud Rate Count Register */
 #define UTS   0xb4 /* UART Test Register (mx31) */
-
-/* UART Control Register Bit Fields.*/
+	
+	/* UART Control Register Bit Fields.*/
 #define  URXD_CHARRDY    (1<<15)
 #define  URXD_ERR        (1<<14)
 #define  URXD_OVRRUN     (1<<13)
@@ -248,54 +192,55 @@ void cpu_init(void)
 #define  UTS_RXFULL	 (1<<3)	 /* RxFIFO full */
 #define  UTS_SOFTRST	 (1<<0)	 /* Software reset */
 
-void uart_init(void)
-{
-	__REG(UART_PHYS + UCR1) = 0x0;
-	__REG(UART_PHYS + UCR2) = 0x0;
-	
-	while (!(__REG(UART_PHYS + UCR2) & UCR2_SRST));
 
-	// note: the above really works?? I think we have to wait some cycles
-	volatile int i;
-	for (i=0; i< 10000; i++);
-	
-	__REG(UART_PHYS + UCR3) = 0x0704;
-	__REG(UART_PHYS + UCR4) = 0x8000;
-	__REG(UART_PHYS + UESC) = 0x002b;
-	__REG(UART_PHYS + UTIM) = 0x0;
-	
-	__REG(UART_PHYS + UTS) = 0x0;
-	
-	__REG(UART_PHYS + UFCR) = (4 << 7) | 0x1; /* divide clock by 2 / RxFIFO thresold to 1*/
-	__REG(UART_PHYS + UBIR) = 0xf;
-	__REG(UART_PHYS + UBMR) = 0x04c4b400 / (2 * 115200);
-	
-	__REG(UART_PHYS + UCR2) = UCR2_WS | UCR2_IRTS | UCR2_RXEN | UCR2_TXEN | UCR2_SRST;
-	
-	__REG(UART_PHYS + UCR1) = UCR1_UARTEN | UCR1_RRDYEN;
-}
+#define Asm __asm__ volatile
+#define CP15_SET_VBAR(x)	Asm("mcr p15, 0, %0, c12, c0, 0"::"r"(x))
+#define CP15_SET_MVBAR(x)	Asm("mcr p15, 0, %0, c12, c0, 1"::"r"(x))
+#define CP15_SET_SCR(x)		Asm("mcr p15, 0, %0, c1,  c1, 0"::"r"(x))
+#define CP15_SET_NSACR(x)	Asm("mcr p15, 0, %0, c1,  c1, 2"::"r"(x))
+#define CP15_SET_CPACR(x)	Asm("mcr p15, 0, %0, c1,  c0, 2"::"r"(x))
 
-char uart_getc (void)
-{
-	while (__REG(UART_PHYS + UTS) & UTS_RXEMPTY);
-	return (char)(__REG(UART_PHYS + URXD) & URXD_RX_DATA);
-}
+#define CP15_GET_ID_PFR1(x)	Asm("mrc p15, 0, %0, c0,  c1, 1":"=r"(x))
+#define CP15_GET_SCR(x)		Asm("mrc p15, 0, %0, c1,  c1, 0":"=r"(x))
 
-void uart_putc(char c)
-{
-	__REG(UART_PHYS + UTXD) = c;
+//For Secure Configuration Register
+//=================================
+#define SCR_NET	(1 << 6)	/*Not Early Termination*/
+#define SCR_AW	(1 << 5)	/*0  the CPSR.A bit can be modified only in Secure state.*/
+							/*1  the CPSR.A bit can be modified in any security state.*/
+#define SCR_FW	(1 << 4)	/*0  the CPSR.F bit can be modified only in Secure state*/
+							/*1  the CPSR.F bit can be modified in any security state.*/
+#define SCR_EA	(1 << 3)	/*0  Abort mode handles external aborts*/
+							/*1  Monitor mode handles external aborts.*/
+#define SCR_FIQ	(1 << 2)	/*0  FIQ mode entered when FIQ is taken*/
+							/*1  Monitor mode entered when FIQ is taken.*/
+#define SCR_IRQ	(1 << 1)	/*0  IRQ mode entered when IRQ is taken*/
+							/*1  Monitor mode entered when IRQ is taken.*/
+#define SCR_NS	(1 << 0)	/*0:Secure state. 1:Non-secure state*/
 
-	/* wait for transmitter to be ready */
-	while (!(__REG(UART_PHYS + UTS) & UTS_TXEMPTY));
+#define SCR_SETTING	( SCR_AW | SCR_FW )
+//=================================SCR
 
-	/* If \n, also do \r */
-	if (c == '\n')
-		uart_putc('\r');
-}
+//For Non-Secure Access Control Register
+//=================================
+#define NSACR_NS_SMP_BIT	(1 << 18)
+/*Determines if the SMP bit of the Auxiliary Control Register is writeable in Non-secure state*/
 
-void uart_puts(const char *s)
-{
-	while (*s) {
-		uart_putc(*s++);
-	}
-}
+#define NSACR_TL_BIT		(1 << 17)
+/*Determines if lockable TLB entries can be allocated in Non-secure state*/
+
+#define NSACR_PLE_BIT		(1 << 16)
+/*Controls NS accesses to the Preload Engine resources*/
+
+#define NSACR_CP11_BIT		(1 << 11)
+/*Determines permission to access coprocessor 11 in the Non-secure state*/
+
+#define NSACR_CP10_BIT		(1 << 10)
+/*Determines permission to access coprocessor 10 in the Non-secure state*/
+
+#define NSACR_SETTING (NSACR_NS_SMP_BIT | NSACR_TL_BIT |NSACR_PLE_BIT| NSACR_CP11_BIT | NSACR_CP10_BIT)
+//=================================end NSACR
+
+void cpu_init(void);
+void uart_init(void);
+void uart_puts(const char *s);

@@ -1,62 +1,49 @@
-typedef unsigned long  u32;
-typedef unsigned short u16;
-typedef unsigned char  u8;
-#define __REG(x)        (*((volatile u32 *)(x)))
-#define __REG16(x)      (*((volatile u16 *)(x)))
-#define __REG8(x)       (*((volatile u8 *)(x)))
+#include "config.h"
+#include "asm-inc.h"
 
-#define Asm __asm__ volatile
-#define CP15_SET_VBAR(x)	Asm("mcr p15, 0, %0, c12, c0, 0"::"r"(x))
-#define CP15_SET_MVBAR(x)	Asm("mcr p15, 0, %0, c12, c0, 1"::"r"(x))
-#define CP15_SET_SCR(x)		Asm("mcr p15, 0, %0, c1,  c1, 0"::"r"(x))
-#define CP15_SET_NSACR(x)	Asm("mcr p15, 0, %0, c1,  c1, 2"::"r"(x))
-#define CP15_SET_CPACR(x)	Asm("mcr p15, 0, %0, c1,  c0, 2"::"r"(x))
+/* .bss section variables */
+/**
+ * @brief User stack
+ */
+u32 user_stack[MAX_CORES][STACK_SIZE]  __attribute__ ((aligned (4)));
 
-#define CP15_GET_ID_PFR1(x)	Asm("mrc p15, 0, %0, c0,  c1, 1":"=r"(x))
-#define CP15_GET_SCR(x)		Asm("mrc p15, 0, %0, c1,  c1, 0":"=r"(x))
+/**
+ * @brief Supervisor stack
+ */
+u32 service_stack[MAX_CORES][STACK_SIZE]  __attribute__ ((aligned (4)));
 
-//For Secure Configuration Register
-//=================================
-#define SCR_NET	(1 << 6)	/*Not Early Termination*/
-#define SCR_AW	(1 << 5)	/*0  the CPSR.A bit can be modified only in Secure state.*/
-							/*1  the CPSR.A bit can be modified in any security state.*/
-#define SCR_FW	(1 << 4)	/*0  the CPSR.F bit can be modified only in Secure state*/
-							/*1  the CPSR.F bit can be modified in any security state.*/
-#define SCR_EA	(1 << 3)	/*0  Abort mode handles external aborts*/
-							/*1  Monitor mode handles external aborts.*/
-#define SCR_FIQ	(1 << 2)	/*0  FIQ mode entered when FIQ is taken*/
-							/*1  Monitor mode entered when FIQ is taken.*/
-#define SCR_IRQ	(1 << 1)	/*0  IRQ mode entered when IRQ is taken*/
-							/*1  Monitor mode entered when IRQ is taken.*/
-#define SCR_NS	(1 << 0)	/*0:Secure state. 1:Non-secure state*/
+/**
+ * @brief Abort stack
+ */
+u32 abort_stack[MAX_CORES][STACK_SIZE]    __attribute__ ((aligned (4)));
 
-#define SCR_SETTING	( SCR_AW | SCR_FW )
-//=================================SCR
+/**
+ * @brief Undefined stack
+ */
+u32 undefined_stack[MAX_CORES][STACK_SIZE]   __attribute__ ((aligned (4)));
 
-//For Non-Secure Access Control Register
-//=================================
-#define NSACR_NS_SMP_BIT	(1 << 18)
-/*Determines if the SMP bit of the Auxiliary Control Register is writeable in Non-secure state*/
+/**
+ * @brief IRQ stack
+ */
+u32 irq_stack[MAX_CORES][STACK_SIZE]      __attribute__ ((aligned (4)));
 
-#define NSACR_TL_BIT		(1 << 17)
-/*Determines if lockable TLB entries can be allocated in Non-secure state*/
+/**
+ * @brief FIQ stack
+ */
+u32 fiq_stack[MAX_CORES][STACK_SIZE]      __attribute__ ((aligned (4)));
 
-#define NSACR_PLE_BIT		(1 << 16)
-/*Controls NS accesses to the Preload Engine resources*/
+/**
+ * @brief Monitor stack
+ */
+u32 monitor_stack[MAX_CORES][STACK_SIZE]  __attribute__ ((aligned (4)));
 
-#define NSACR_CP11_BIT		(1 << 11)
-/*Determines permission to access coprocessor 11 in the Non-secure state*/
+/**
+ * @brief Parameters stack which is used to SMC call parameters
+ */
+u32 params_stack[PARAM_STACK_SIZE] __attribute__ ((section (".bss"))) 
+                                                 __attribute__ ((aligned (4)));
 
-#define NSACR_CP10_BIT		(1 << 10)
-/*Determines permission to access coprocessor 10 in the Non-secure state*/
 
-#define NSACR_SETTING (NSACR_NS_SMP_BIT | NSACR_TL_BIT |NSACR_PLE_BIT| NSACR_CP11_BIT | NSACR_CP10_BIT)
-//=================================end NSACR
-
-extern u32 monitor_vetor_table;
-extern void cpu_init(void);
-extern void uart_init(void);
-extern void uart_puts(const char *s);
 
 void delay(void)
 {
@@ -150,37 +137,31 @@ void target_gic_init(void)
 	//__REG(ICCBASE + ICCICR) = 0x1f;
 }
 
-void display_version(void)
+void display_support_info(void)
 {
 	u32 ID_PFR1;
 
 	CP15_GET_ID_PFR1(ID_PFR1);
 	if( 0 != ((ID_PFR1 >> 4) & 0xf) )
-		uart_puts("this target support security extensions\n");
+		uart_puts("====this target support security extensions\n");
 	else
-		uart_puts("this target not support security extensions\n");
+		uart_puts("====this target not support security extensions\n");
 
 	if( 0 != ((ID_PFR1 >> 12) & 0xf) )
-		uart_puts("this target support virtualization extensions\n");
+		uart_puts("====this target support virtualization extensions\n");
 	else
-		uart_puts("this target not support virtualization extensions\n");
+		uart_puts("====this target not support virtualization extensions\n");
 }
 
 void target_init(void)
 {
-	u32 i;
-	char* dest = (char*)0x27800000;
-	char* src  = (char*)0x0090b000;
-
 	cpu_init();
 	uart_init();
 	uart_puts("\n");
-	display_version();
+	display_support_info();
 
-	
-	CP15_SET_MVBAR(&monitor_vetor_table);
 	CP15_SET_SCR(0x30);
-	CP15_SET_NSACR(0x00063fff);
+	CP15_SET_NSACR(0x00073fff);
 	CP15_SET_CPACR(0x0fffffff); // Full access for cp11 and cp10
 
 	target_csu_init();
@@ -188,41 +169,126 @@ void target_init(void)
 	target_scu_init();
 
 	target_gic_init();
-
-	// copy uboot from iram to sadram
-	for(i=0; i<160096; i++)
-		*dest++ = *src++;
-
-#if 0	
-	//start uboot directly
-	(*((void(*)(void))0x27800000))(); 
-#endif	
 }
 
-u32 invoke_reg_wr(u32 cmd, u32 value, u32 dreg, u32 reserve)
+void secure_loop(void)
 {
-	__REG(dreg) = value;
-	uart_puts("\n\r==write the register in monitor\n\r");
+	register u32 r0 asm("r0") = 0;
+    register u32 r1 asm("r1") = 0;
+    register u32 r2 asm("r2") = 0;
+	register u32 r3 asm("r3") = 0;
+
+	u32 value;
 	
-	return 0;
-}
+	while(1){
+		uart_puts("====enter the secure world\n");
 
-u32 invoke_cp15_wr(u32 cmd, u32 type, u32 value, u32 reserve)
-{
+		if( SMCID_NS_INVOKE_S == params_stack[0] ){
+			switch(params_stack[1]){
+			case 0xF000:
+				uart_puts("====invoke cp15 0, c1, c0, 1 write\n");
+				value = 0x41;
+				asm volatile("mcr p15, 0, %0, c1,  c0,  1\n\t"::"r"(value):);
+				//asm volatile("mcr p15, 0, %0, c1,  c0,  1\n\t"::"r"(params_stack[2]):"memory", "cc");
+				break;
+					
+			case 0xF004:
+				uart_puts("====invoke cp15 0, c15, c0, 1 write\n");
+				//asm volatile("mcr p15, 0, %0, c15, c0,  1\n\t"::"r"(params_stack[2]):"memory", "cc");
+				break;
 
-	switch(type){
-	case 0xF000: //ACTLR
-		asm volatile("mcr p15, 0, %0, c1,  c0,  1\n\t"::"r"(value):"memory", "cc");
-		uart_puts("\n\r==write the ACTLR in monitor\n\r");
-		break;
-	case 0xF004: 
-		asm volatile("mcr p15, 0, %0, c15, c0,  1\n\t"::"r"(value):"memory", "cc");
-		uart_puts("\n\r==write the 0 c15 c0 1 in monitor\n\r");
-		break;
+			case 0xF008:
+				uart_puts("====invoke register write\n");
+				__REG(params_stack[2]) = params_stack[3];
+				break;
 
-	default:
-		break;
+			default:
+				uart_puts("nothing to do in secure world\n");
+				break;
+			}
+		}
+
+		uart_puts("====return to normal world\n");
+		
+		r0 = SMCID_SWITCH_TO_NS;
+		r1 = 0;
+		r2 = 0;
+		r3 = 0;
+		asm volatile(".arch_extension sec\n\t"
+					"dsb\n\t"
+					"smc #0\n\t" 
+					: 
+					:"r"(r0),"r"(r1),"r"(r2),"r"(r3)
+					:"memory", "cc");
 	}
-	
-	return value;
 }
+
+void secure_exception_handler(u32 type)
+{
+	switch(type){
+	case 0x0:
+		uart_puts("====secure_reset_handler\n");
+		break;
+	case 0x4:
+		uart_puts("====secure_undefined_handler\n");
+		break;
+	case 0x8:
+		uart_puts("====secure_swi_handler\n");
+		break;
+	case 0xc:
+		uart_puts("====secure_prefetch_handler\n");
+		break;
+	case 0x10:
+		uart_puts("====secure_abort_handler\n");
+		break;
+	case 0x14:
+		uart_puts("====secure_hypvisor_handler\n");
+		break;
+	case 0x18:
+		uart_puts("====secure_irq_handler\n");
+		break;
+	case 0x1c:
+		uart_puts("====secure_fiq_handler\n");
+		break;
+	default:
+		uart_puts("====secure exception error\n");
+		break;
+	
+	}
+}
+
+void monitor_exception_handler(u32 type)
+{
+	switch(type){
+	case 0x0:
+		uart_puts("====monitor_reset_handler\n");
+		break;
+	case 0x4:
+		uart_puts("====monitor_undefined_handler\n");
+		break;
+	case 0x8:
+		uart_puts("====monitor_smc_handler\n");
+		break;
+	case 0xc:
+		uart_puts("====monitor_prefetch_handler\n");
+		break;
+	case 0x10:
+		uart_puts("====monitor_abort_handler\n");
+		break;
+	case 0x14:
+		uart_puts("====monitor_hypvisor_handler\n");
+		break;
+	case 0x18:
+		uart_puts("====monitor_irq_handler\n");
+		break;
+	case 0x1c:
+		uart_puts("====monitor_fiq_handler\n");
+		break;
+	default:
+		uart_puts("====monitor exception error\n");
+		break;
+	
+	}
+}
+
+

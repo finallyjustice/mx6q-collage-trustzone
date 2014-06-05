@@ -1,148 +1,276 @@
-#define ID_SWITCH_UBOOT		(0xFFFFFFF0)
-#define ID_SWITCH_TO_NS		(0xFFFFFFF4)
-#define ID_SWITCH_TO_S		(0xFFFFFFF8)
+#include "asm-inc.h"
 
-#define ID_EXE_REG_WR		(0xFFFFFFE0)
-#define ID_EXE_CP15_WR		(0xFFFFFFE4)
+@rt is temporary register
+.macro scr_nsbit_set rt
+	mrc     p15, 0, \rt, c1, c1, 0  @ Read Secure Configuration Register
+	orr	\rt, \rt, #SCR_NS_BIT
+	mcr     p15, 0, \rt, c1, c1, 0  @ Write Secure Configuration Register
+.endm
 
-#define ns_image 0x27800000
+.macro scr_nsbit_clear rt
+	mrc     p15, 0, \rt, c1, c1, 0  @ Read Secure Configuration Register
+	bic	\rt, \rt, #SCR_NS_BIT
+	mcr     p15, 0, \rt, c1, c1, 0  @ Write Secure Configuration Register
+.endm	
 
-#define cpsr_mode_svc	(0x13)
-#define cpsr_mode_mon	(0x16)
-#define cpsr_irq_bit	(0x80)
-#define cpsr_fiq_bit	(0x40)
-
-.equ NS_BIT,	0x1
+.macro GET_CPU_ID rt
+	mrc     p15, 0, \rt, c0, c0, 5   @ Read CPU ID register
+	and     \rt, \rt, #0x03           @ Mask off, leaving the CPU ID field
+.endm
 
 @ ------------------------------------------------------------
 @ Monitor mode vector table
 @ ------------------------------------------------------------
 	.section .vector, "ax"
-	.global monitor_vetor_table
+	.global monitor_exception_vectors
 	.align 5
-monitor_vetor_table:
+monitor_exception_vectors:
 	@ Monitor's
-	NOP     @ Reset      - not used by Monitor
-	NOP     @ Undef      - not used by Monitor
-	B       SMC_Handler
-	NOP     @ Prefetch   - can by used by Monitor
-	NOP     @ Data abort - can by used by Monitor
-	NOP     @ RESERVED
-	NOP     @ IRQ        - can by used by Monitor
-	NOP     @ FIQ        - can by used by Monitor
+	NOP		@ Reset				@- not used by Monitor
+	NOP		@ Undef				@- not used by Monitor
+	B		SMC_Handler
+	B		_prefetch_handler	@- can by used by Monitor
+	B		_abort_handler		@- can by used by Monitor
+	NOP		@ RESERVED			@- this is reserved for hypvisor mode
+	B		_irq_handler		@- can by used by Monitor
+	B		_fiq_handler		@- can by used by Monitor
 
-@ ------------------------------------------------------------
-@ SMC Handler
-@
-@ - Detect which world executed SMC
-@ - Saves state to appropriate stack
-@ - Restores other worlds state
-@ - Switches world
-@ - Performs exception return
-@ ------------------------------------------------------------
+_prefetch_handler:
+	mov	r0, #0xc
+	BL	monitor_exception_handler
+	B	_prefetch_handler
+
+_abort_handler:
+	mov	r0, #0x10
+	BL	monitor_exception_handler
+	B	_abort_handler
+
+_irq_handler:
+	mov	r0, #0x18
+	BL	monitor_exception_handler
+	B	_irq_handler
+
+_fiq_handler:
+	mov	r0, #0x1c
+	BL	monitor_exception_handler
+	B	_fiq_handler
+
 	.align 5
 	.global SMC_Handler
 SMC_Handler:
-	cmp r0, #ID_EXE_REG_WR
-	beq exe_reg_wr
-	
-	cmp r0, #ID_EXE_CP15_WR
-	beq	exe_cp15_wr
-	
-	PUSH   {r0-r3}
-		
-	MRC     p15, 0, r9, c1, c1, 0        @ Read Secure Configuration Register data
-	TST     r9, #NS_BIT                  @ Is the NS bit set?
-	EOR     r9, r9, #NS_BIT              @ Toggle NS bit
-	MCR     p15, 0, r9, c1, c1, 0        @ Write Secure Configuration Register data
-	
-	@ Load save to pointer
-	@ ---------------------
-	LDREQ   r0, =S_STACK_SP             @ If NS bit set, was in Normal world.  So restore Secure state
-	LDRNE   r0, =NS_STACK_SP
-	LDR     r2, [r0]
-	
-	@ Load restore from pointer
-	@ --------------------------
-	LDREQ   r1, =NS_STACK_SP
-	LDRNE   r1, =S_STACK_SP
-	LDR     r3, [r1]
-	
-	@ r2  <-- save to
-	@ r3  <-- restore from
-	
-	@ Save general purpose registers, SPSR and LR
-	@ --------------------------------------------
-	STMFD   r2!, {r4-r12}               @ Save r4 to r12
-	@ ADD SUPPORT FOR SPs
-	MRS     r4, spsr                    @ Also get a copy of the SPSR
-	STMFD   r2!, {r4, lr}               @ Save original SPSR and LR
-	STR     r2, [r0]                    @ Save updated pointer back, r0 and r2 now free
-	
-	@ Restore other world's registers, SPSR and LR
-	@ ---------------------------------------------
-	LDMFD   r3!, {r0, lr}               @ Get SPSR and LR from
-	@ ADD SUPPORT FOR SPs
-	MSR     spsr_cxsf, r0               @ Restore SPSR
-	LDMFD   r3!, {r4-r12}               @ Restore registers r4 to r12
-	STR     r3, [r1]                    @ Save updated pointer back, r1 and r3 now free
-	
-	CLREX
-	
-	POP     {r0-r3}
-	MOVS    pc, lr
-	
-exe_reg_wr:
-	stmdb sp!, {r4-r12, lr}
-	bl invoke_reg_wr
-	ldmia sp!, {r4-r12, pc}^
+	cmp	r0,	#SMCID_SWITCH_TO_NS
+	beq	call_non_secure_world
 
-exe_cp15_wr:
-    stmdb sp!, {r4-r12, lr}
-    bl invoke_cp15_wr
-    ldmia sp!, {r4-r12, pc}^
-    
+	cmp	r0,	#SMCID_SWITCH_TO_S
+	beq	call_secure_world
 
+	@cmp r0, #SMCID_NS_INVOKE_S
+	@beq	call_ns_invoke_s
+	b	call_ns_invoke_s
 
+	bx  lr
+	
 	.align 5
 	.global start_uboot
 start_uboot:
-	/* Prepare the first NT OS start address PC and CPSR */
-	LDR     r0, =NS_STACK_LIMIT         
-	STMFD   r0!, {r4-r12}              
-	@ ADD support for SPs
-	ldr r1, =(cpsr_mode_svc | cpsr_irq_bit | cpsr_fiq_bit)
-	ldr r2, =ns_image
-	STMFD   r0!, {r1, r2}
+@prepare for uboot context
+	mov 	lr, r3
+	ldr 	r4, =NS_STACK_BASE
 	
-	LDR     r1, =NS_STACK_SP             @ Get address of global
-	STR     r0, [r1]                     @ Save non-secure stack pointer
-	
-	LDR     r0, =S_STACK_LIMIT
-	LDR     r1, =S_STACK_SP              @ Get address of global
-	STR     r0, [r1]                     @ Save secure stack pointer
-		
-	smc #0
-	
-1:
-	ldr r8, =0x020b4004
-	ldr r7, =0x3
-	str r7, [r8]
-	smc #0
-	b 1b
+	mov 	r0, #0
+	mov 	r1, #0
+	mov 	r2, #0
+	mov 	r3, #0
+	stmia	r4!, {r0-r3}
+	mov     r0, r4
 
+	mov 	r4, #0
+	mov 	r5, #0
+	mov 	r6, #0
+	mov 	r7, #0
+	mov 	r8, #0
+	mov 	r9, #0
+	mov 	r10, #0
+	mov 	r11, #0
+	mov 	r12, #0
+	stmia   r0!, {r4-r12}
+
+	ldr 	r1, =(cpsr_mode_svc | cpsr_irq_bit | cpsr_fiq_bit)
+    stmia   r0!, {r1, lr}
+	
+@invoke smc
+	ldr		r0, =SMCID_SWITCH_TO_NS
+	smc		#0
+	
+	bl secure_loop
+	
 @	srsdb sp!, #cpsr_mode_mon
 @	rfeia sp!
+@	stmdb sp!, {r4-r12, lr}
+@	ldmia sp!, {r4-r12, pc}^
+
+@ r0 points to the base address where the register context get saved
+.func save_context
+.global save_context
+save_context:	
+    @ Save general purpose registers, SPSR and LR
+    @ --------------------------------------------
+	
+    mov     r4, r0                      
+    pop     {r0 - r3}                   @ Retrieve from stack
+    stmia   r4!, {r0 - r3}              @ r0 - r3
+    mov     r0, r4
+
+    mov     r2, lr                      @ Save return path
+	
+    pop     {r4, lr}                    @ Retrieve from stack
+	
+    stmia   r0!, {r4-r12}               @ r4 to r12
+	
+    mrs     r1, spsr                    @ SPSR, LR
+    stmia   r0!, {r1, lr}
+
+    mov     lr, r2                      @ restore return path 
+	
+    @ Save banked registers
+    cps #cpsr_mode_svc	
+    mrs     r1, spsr
+    stmia   r0!, {r1, r13, lr}
+
+    cps #cpsr_mode_sys	
+    stmia   r0!, {r13, lr}
+
+    cps #cpsr_mode_abt	
+    mrs     r1, spsr
+    stmia   r0!, {r1, r13, lr}
+
+    cps #cpsr_mode_und	
+    mrs     r1, spsr
+    stmia   r0!, {r1, r13, lr}
+
+    cps #cpsr_mode_irq	
+    mrs     r1, spsr
+    stmia   r0!, {r1, r13, lr}
+
+    cps #cpsr_mode_mon
+    mov    pc, lr
+
+.endfunc
+
+@ r0 points to the base address from which the register context get restored
+.func restore_context
+.global restore_context
+restore_context:	
+    @ Restore other world's registers, SPSR and LR
+    @ ---------------------------------------------
+    push    {lr}
+
+    mov	r4, r0                         @r0 - r3
+    ldmia r4!, {r0 - r3}
+	
+    push {r0, r1}
+    mov r0, r4
+
+    ldmia r0!, {r4 - r12}              @r4 - r12
+	
+    ldmia r0!, {r1, lr}                @spsr, lr
+    msr	spsr_cxsf, r1
+	
+    @Restore banked registers
+    cps #cpsr_mode_svc	
+    ldmia   r0!, {r1, r13, lr} 
+    msr spsr_cxsf, r1
+
+    cps #cpsr_mode_sys	
+    ldmia   r0!, {r13, lr} 
+
+    cps #cpsr_mode_abt	
+    ldmia   r0!, {r1, r13, lr} 
+    msr spsr_cxsf, r1
+
+    cps #cpsr_mode_und	
+    ldmia   r0!, {r1, r13, lr} 
+    msr spsr_cxsf, r1	
+
+    cps #cpsr_mode_irq	
+    ldmia   r0!, {r1, r13, lr} 
+    msr spsr_cxsf, r1
+
+    cps #cpsr_mode_mon	
+    pop     {r0, r1}
+    ldr    pc, [r13], #4
+.endfunc
+
+call_non_secure_world:
+	push	{r4, lr}
+	push	{r0-r3}
+	b mon_switchto_nsworld
+
+call_secure_world:
+	push	{r4, lr}
+	push	{r0-r3}
+	b mon_switchto_sworld
+
+call_ns_invoke_s:
+	push	{r4, lr}
+	push	{r0-r3}
+
+	/* Copy args to params stack */
+    ldr     r4, =params_stack
+    stmia   r4, {r0-r3}
+
+    b mon_switchto_sworld
+	
+
+.func  mon_switchto_nsworld
+mon_switchto_nsworld:
+    ldr	r0, =S_STACK_BASE
+    bl    save_context
+
+    ldr	r0, =NS_STACK_BASE
+    bl    restore_context
+    
+    @ Clear local monitor
+    @ --------------------
+    clrex
+
+    push {r0}
+    @Move to Non Secure
+    scr_nsbit_set r0
+    pop  {r0}
+
+	dsb
+	isb
+
+    movs    pc, lr
+.endfunc
+
+.func  mon_switchto_sworld
+mon_switchto_sworld:
+    @Move to Secure
+    scr_nsbit_clear r0
+	
+    ldr	r0, =NS_STACK_BASE
+    bl    save_context
+
+    ldr	r0, =S_STACK_BASE
+    bl    restore_context
+    @ Clear local monitor
+    @ --------------------
+    clrex                         
+
+    movs    pc, lr
+.endfunc
 	
 @ ------------------------------------------------------------
 @ Space reserved for stacks
 @ ------------------------------------------------------------  
 NS_STACK_BASE:
-  .word     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  .space	4*256
 NS_STACK_LIMIT:
 
 S_STACK_BASE:
-  .word     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  .space    4*256
 S_STACK_LIMIT:
 
 NS_STACK_SP:
